@@ -9,8 +9,16 @@
 #region Setup
 
 Write-Debug 'Set up the global scope config variables.'
-$global:UserModuleBasePath = Join-Path -Path ([Environment]::GetFolderPath('MyDocuments')) -ChildPath 'WindowsPowerShell\Modules'
-$global:CommonGlobalModuleBasePath = Join-Path -Path $env:CommonProgramFiles -ChildPath 'Modules'
+if ([Environment]::GetFolderPath('MyDocuments')) {
+    $global:UserModuleBasePath = Join-Path -Path ([Environment]::GetFolderPath('MyDocuments')) -ChildPath 'WindowsPowerShell\Modules'
+}
+else {
+    # Support scenarios where PSGet is running without a MyDocuments special folder (e.g. executing within a DSC resource)
+    $global:UserModuleBasePath = Join-Path -Path $env:ProgramFiles -ChildPath 'WindowsPowerShell\Modules'
+}
+
+# NOTE: Path changed to align with current MS conventions
+$global:CommonGlobalModuleBasePath = Join-Path -Path $env:ProgramFiles -ChildPath 'WindowsPowerShell\Modules'
 
 if (-not (Test-Path -Path:variable:global:PsGetDirectoryUrl)) {
     $global:PsGetDirectoryUrl = 'https://github.com/psget/psget/raw/master/Directory.xml'
@@ -96,16 +104,16 @@ Set-Variable -Name PSGET_PSD1 -Value 'PSD1' -Option Constant -Scope Script
     .PARAMETER DoNotPostInstall
         If defined, the PostInstallHook is not executed.
 
-    .PARAMERTER PostInstallHook
+    .PARAMETER PostInstallHook
         Defines the name of a script inside the installed module folder which should be executed after installation.
         Default: definition in directory file or 'Install.ps1'
 
     .PARAMETER Force
-        OBSOLATE
+        OBSOLETE
         Alternative name for 'Update'.
 
     .PARAMETER Startup
-        OBSOLATE
+        OBSOLETE
         Alternative name for 'AddToProfile'.
 
     .LINK
@@ -349,7 +357,7 @@ function Install-Module {
     .PARAMETER DoNotPostInstall
         If defined, the PostInstallHook is not executed.
 
-    .PARAMERTER PostInstallHook
+    .PARAMETER PostInstallHook
         Defines the name of a script inside the installed module folder which should be executed after installation.
         Will not be check in combination with -All switch.
         Default: 'Install.ps1'
@@ -414,7 +422,7 @@ function Update-Module {
 
         }
         else {
-            Install-Module -Module:$Module -Destination:$Destination -ModuleHash:$ModuleHash -Global:$Global -DoNotImport:$DoNotImport -AddToProfile:$AddToProfile -DirectoryUrl:$DirectoryUrl -Updat -DoNotPostInstall:$DoNotPostInstall -PostInstallHook:$PostInstallHook
+            Install-Module -Module:$Module -Destination:$Destination -ModuleHash:$ModuleHash -Global:$Global -DoNotImport:$DoNotImport -AddToProfile:$AddToProfile -DirectoryUrl:$DirectoryUrl -Update -DoNotPostInstall:$DoNotPostInstall -PostInstallHook:$PostInstallHook
         }
     }
 }
@@ -629,7 +637,7 @@ function Get-PsGetModuleHash {
     .PARAMETER DoNotPostInstall
         If defined, the PostInstallHook is not executed.
 
-    .PARAMERTER PostInstallHook
+    .PARAMETER PostInstallHook
         Defines the name of a script inside the installed module folder which should be executed after installation.
         Default: definition in directory file or 'Install.ps1'
 #>
@@ -754,7 +762,7 @@ function Install-ModuleFromDirectory {
     .PARAMETER DoNotPostInstall
         If defined, the PostInstallHook is not executed.
 
-    .PARAMERTER PostInstallHook
+    .PARAMETER PostInstallHook
         Defines the name of a script inside the installed module folder which should be executed after installation.
         Default: 'Install.ps1'
 #>
@@ -863,7 +871,7 @@ function Install-ModuleFromWeb {
     .PARAMETER DoNotPostInstall
         If defined, the PostInstallHook is not executed.
 
-    .PARAMERTER PostInstallHook
+    .PARAMETER PostInstallHook
         Defines the name of a script inside the installed module folder which should be executed after installation.
         Default: 'Install.ps1'
 #>
@@ -1010,7 +1018,7 @@ function Install-ModuleFromLocal {
     .PARAMETER DoNotPostInstall
         If defined, the PostInstallHook is not executed.
 
-    .PARAMERTER PostInstallHook
+    .PARAMETER PostInstallHook
         Defines the name of a script inside the installed module folder which should be executed after installation.
         Default: 'Install.ps1'
 #>
@@ -1514,7 +1522,7 @@ function Invoke-DownloadModuleFromWeb {
     .PARAMETER DoNotPostInstall
         If defined, the PostInstallHook is not executed.
 
-    .PARAMERTER PostInstallHook
+    .PARAMETER PostInstallHook
         Defines the name of a script inside the installed module folder which should be executed after installation.
 #>
 function Install-ModuleToDestination {
@@ -1910,14 +1918,20 @@ function Invoke-DownloadNuGetPackage {
         }
 
         Write-Verbose "Querying '$Source' repository for package with Id '$NuGetPackageId'"
-        $Url = "{1}Packages()?`$filter=tolower(Id)+eq+'{0}'&`$orderby=Id" -f $NuGetPackageId.ToLower(), $Source
-        Write-Debug "NuGet query url: $Url"
-
         try {
+            $Url = "{1}Packages()?`$filter=tolower(Id)+eq+'{0}'&`$orderby=Id" -f $NuGetPackageId.ToLower(), $Source
+            Write-Debug "Trying NuGet query url: $Url"
             $XmlDoc = [xml]$WebClient.DownloadString($Url)
         }
         catch {
-            throw "Unable to download from NuGet feed: $($_.Exception.InnerException.Message)"
+            try {
+                $Url = "{1}Packages(Id='{0}')?`$orderby=Id" -f $NuGetPackageId, $Source
+                Write-Debug "Trying NuGet query url: $Url"
+                $XmlDoc = [xml]$WebClient.DownloadString($Url)
+            }
+            catch {
+                throw "Unable to download from NuGet feed: $($_.Exception.InnerException.Message)"
+            }
         }
 
         if ($PackageVersion) {
@@ -2110,7 +2124,7 @@ function TabExpansion {
             Get-PsGetModuleInfo -ModuleName "$lastword*" | % { $_.Id } | sort -Unique
         }
         elseif ( Test-Path -Path Function:\$tabExpansionBackup ) {
-            & $teBackup $line $lastWord
+            & $tabExpansionBackup $line $lastWord
         }
     }
 }
